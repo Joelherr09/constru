@@ -3,9 +3,9 @@ const cors = require('cors');
 require('dotenv').config();
 
 const authRoutes = require('./src/routes/auth');
-//const manzanasRoutes = require('./src/routes/manzanas');
-//const viviendasRoutes = require('./src/routes/viviendas');
-//const partidasRoutes = require('./src/routes/partidas');
+const manzanasRoutes = require('./src/routes/manzanas');
+const viviendasRoutes = require('./src/routes/viviendas');
+const partidasRoutes = require('./src/routes/partidas');
 
 const app = express();
 
@@ -13,9 +13,9 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
-//app.use('/api/manzanas', manzanasRoutes);
-//app.use('/api/viviendas', viviendasRoutes);
-//app.use('/api/partidas', partidasRoutes);
+app.use('/api/manzanas', manzanasRoutes);
+app.use('/api/viviendas', viviendasRoutes);
+app.use('/api/partidas', partidasRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
