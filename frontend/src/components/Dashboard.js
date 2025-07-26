@@ -8,60 +8,112 @@ function Dashboard() {
   const [viviendas, setViviendas] = useState([]);
   const [selectedManzana, setSelectedManzana] = useState(null);
   const [loading, setLoading] = useState({ manzanas: true, viviendas: false });
-  const [error, setError] = useState('');
+  const [error, setError] = useState({ manzanas: null, viviendas: null });
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user'));
 
+  // Función para cargar manzanas
   useEffect(() => {
-    const fetchManzanasWithCount = async () => {
+    const fetchManzanas = async () => {
       try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('No se encontró token de autenticación');
+        }
+
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/manzanas`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 8000 // Timeout de 8 segundos
         });
-        
-        // Obtener conteo de viviendas para cada manzana
-        const manzanasWithCount = await Promise.all(
-          response.data.map(async (manzana) => {
-            const viviendasResponse = await axios.get(
-              `${process.env.REACT_APP_API_URL}/manzanas/${manzana.id}/viviendas`,
-              { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-            );
-            return {
-              ...manzana,
-              viviendas_count: viviendasResponse.data.length
-            };
-          })
-        );
-        
-        setManzanas(manzanasWithCount);
-        setLoading(prev => ({ ...prev, manzanas: false }));
+
+        if (!response.data || !Array.isArray(response.data)) {
+          throw new Error('Formato de respuesta inválido');
+        }
+
+        setManzanas(response.data);
+        setError(prev => ({ ...prev, manzanas: null }));
       } catch (err) {
-        setError(err.response?.data?.message || 'Error al cargar manzanas');
+        console.error('Error al cargar manzanas:', err);
+        setError(prev => ({ ...prev, manzanas: err.message || 'Error al cargar manzanas' }));
+      } finally {
         setLoading(prev => ({ ...prev, manzanas: false }));
       }
     };
 
-    fetchManzanasWithCount();
+    fetchManzanas();
   }, []);
 
-  const handleSelectManzana = async (manzanaId) => {
-    setSelectedManzana(manzanaId);
-    setLoading(prev => ({ ...prev, viviendas: true }));
+// Función para cargar viviendas cuando se selecciona una manzana
+useEffect(() => {
+  if (!selectedManzana) return;
+
+  const fetchViviendas = async () => {
     try {
+      setLoading(prev => ({ ...prev, viviendas: true }));
+      setError(prev => ({ ...prev, viviendas: null }));
+      
+      const token = localStorage.getItem('token');
+      console.log(`Fetching viviendas for manzana ${selectedManzana}...`);
+      
       const response = await axios.get(
-        `${process.env.REACT_APP_API_URL}/manzanas/${manzanaId}/viviendas`,
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        `${process.env.REACT_APP_API_URL}/manzanas/${selectedManzana}/viviendas`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 15000
+        }
       );
+
+      console.log('Viviendas response:', response.data);
+      
+      if (!Array.isArray(response.data)) {
+        throw new Error('La respuesta no contiene un array de viviendas');
+      }
+
       setViviendas(response.data);
-      setLoading(prev => ({ ...prev, viviendas: false }));
     } catch (err) {
-      setError(err.response?.data?.message || 'Error al cargar viviendas');
+      console.error('Error fetching viviendas:', err);
+      setError(prev => ({
+        ...prev,
+        viviendas: err.response?.data?.message || 
+                  err.message || 
+                  'Error al cargar viviendas'
+      }));
+      setViviendas([]);
+    } finally {
       setLoading(prev => ({ ...prev, viviendas: false }));
     }
   };
 
-  if (loading.manzanas) return <div className="p-4 text-center">Cargando manzanas...</div>;
-  if (error) return <div className="p-4 text-red-500 text-center">{error}</div>;
+  fetchViviendas();
+}, [selectedManzana]);
+
+  // Renderizado condicional
+  if (loading.manzanas) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen pb-16">
+        <div className="text-lg mb-2">Cargando manzanas...</div>
+        <div className="w-1/2 bg-gray-200 rounded-full h-2.5">
+          <div className="bg-blue-600 h-2.5 rounded-full animate-pulse"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error.manzanas) {
+    return (
+      <div className="p-4 text-center pb-16">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error.manzanas}
+        </div>
+        <button 
+          onClick={() => window.location.reload()}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-16">
@@ -76,76 +128,74 @@ function Dashboard() {
           </h2>
           
           <h3 className="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">
-            Manzanas ({manzanas.length})
+            Manzanas
           </h3>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
             {manzanas.map(manzana => (
               <button
                 key={manzana.id}
-                onClick={() => handleSelectManzana(manzana.id)}
-                className={`p-3 rounded-lg shadow-sm border transition-all ${
+                onClick={() => setSelectedManzana(manzana.id)}
+                className={`p-4 rounded-lg shadow-md text-center transition-colors ${
                   selectedManzana === manzana.id
-                    ? 'bg-blue-600 text-white border-blue-700'
-                    : 'bg-white hover:bg-blue-50 text-blue-600 border-gray-200'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white hover:bg-blue-50 text-blue-600'
                 }`}
               >
-                <h2 className="font-semibold text-sm sm:text-base">{manzana.nombre}</h2>
-                <p className="text-xs mt-1">
-                  {manzana.viviendas_count} vivienda{manzana.viviendas_count !== 1 ? 's' : ''}
-                </p>
+                <h2 className="font-semibold">{manzana.nombre}</h2>
               </button>
             ))}
           </div>
 
           {selectedManzana && (
-            <div className="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
-              <div className="bg-gray-800 text-white p-3 flex justify-between items-center">
-                <h3 className="text-lg font-semibold sm:text-xl">
-                  Viviendas - {manzanas.find(m => m.id === selectedManzana)?.nombre}
-                </h3>
-                <span className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs">
-                  {viviendas.length} vivienda{viviendas.length !== 1 ? 's' : ''}
-                </span>
-              </div>
+            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+              <h3 className="text-lg font-semibold p-4 bg-gray-800 text-white sm:text-xl">
+                Viviendas - Manzana {manzanas.find(m => m.id === selectedManzana)?.nombre}
+              </h3>
               
               {loading.viviendas ? (
-                <div className="p-4 text-center">Cargando viviendas...</div>
+                <div className="p-4 text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mb-2"></div>
+                  <div>Cargando viviendas...</div>
+                </div>
+              ) : error.viviendas ? (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded m-4">
+                  {error.viviendas}
+                </div>
               ) : viviendas.length > 0 ? (
                 <div className="divide-y divide-gray-100">
                   {viviendas.map(vivienda => (
                     <div 
                       key={vivienda.id} 
-                      className="p-3 hover:bg-gray-50 cursor-pointer transition-colors flex justify-between items-center"
+                      className="p-4 hover:bg-gray-50 cursor-pointer transition-colors flex justify-between items-center"
+                      onClick={() => navigate(`/vivienda/${vivienda.id}`)}
                     >
-                      <div className="flex items-center">
-                        <div className="bg-blue-100 text-blue-800 rounded-full w-8 h-8 flex items-center justify-center mr-3">
-                          {vivienda.numero_vivienda}
-                        </div>
-                        <div>
-                          <span className="font-medium text-gray-800 block">
-                            Vivienda {vivienda.numero_vivienda}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {vivienda.partidas_count} partida{vivienda.partidas_count !== 1 ? 's' : ''}
-                          </span>
+                      <div>
+                        <span className="font-medium text-gray-800">
+                          Vivienda {vivienda.numero_vivienda}
+                        </span>
+                        <div className="text-sm text-gray-500 mt-1">
+                          Partidas: {vivienda.partidas_count || 0}
                         </div>
                       </div>
                       <div className="flex items-center">
-                        <span className={`px-2 py-1 rounded-full text-xs font-bold mr-3 ${
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold mr-3 ${
                           vivienda.progreso_general === 100
                             ? 'bg-green-100 text-green-800'
                             : vivienda.progreso_general > 50
                             ? 'bg-blue-100 text-blue-800'
                             : 'bg-yellow-100 text-yellow-800'
                         }`}>
-                          {vivienda.progreso_general}%
+                          {vivienda.progreso_general || 0}%
                         </span>
                         <button 
-                          className="bg-blue-600 text-white px-3 py-1 rounded text-xs sm:text-sm hover:bg-blue-700 transition-colors"
-                          onClick={() => navigate(`/vivienda/${vivienda.id}`)}
+                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/vivienda/${vivienda.id}`);
+                          }}
                         >
-                          Ver detalle
+                          Acceder
                         </button>
                       </div>
                     </div>

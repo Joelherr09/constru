@@ -11,45 +11,72 @@ exports.getManzanas = async (req, res) => {
     res.json(manzanas);
   } catch (error) {
     console.error('Get manzanas error:', error);
-    res.status(500).json({ message: 'Error en el servidor', error: error.message });
-  }
-};
-exports.getAllManzanas = async (req, res) => {
-  try {
-    const [manzanas] = await db.query('SELECT * FROM manzanas');
-    res.json(manzanas);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Error al obtener las manzanas' });
+    res.status(500).json({ 
+      message: 'Error en el servidor', 
+      error: error.message,
+      stack: error.stack // Para más detalles en desarrollo
+    });
   }
 };
 
 exports.getViviendasByManzana = async (req, res) => {
   try {
     const { id } = req.params;
-    const [viviendas] = await db.query(`
-      SELECT 
-        v.id,
-        v.numero_vivienda,
-        v.manzana_id,
-        COUNT(DISTINCT pt.partida_id) as partidas_count,
-        COUNT(DISTINCT CASE WHEN t.progreso = 100 THEN t.tarea_id END) as tareas_completadas,
-        COUNT(DISTINCT t.tarea_id) as tareas_totales
-      FROM viviendas v
-      LEFT JOIN partidas_tareas pt ON v.id = pt.vivienda_id
-      LEFT JOIN tareas t ON pt.tarea_id = t.id
-      WHERE v.manzana_id = ?
-      GROUP BY v.id
-    `, [id]);
     
-    res.json(viviendas.map(v => ({
-      ...v,
-      progreso_general: v.tareas_totales > 0 
-        ? Math.round((v.tareas_completadas / v.tareas_totales) * 100)
-        : 0
-    })));
+    if (!id || isNaN(id)) {
+      return res.status(400).json({ message: 'ID de manzana inválido' });
+    }
+
+    // Primero verifica si la manzana existe
+    const [manzana] = await pool.query('SELECT * FROM Manzanas WHERE id = ?', [id]);
+    if (manzana.length === 0) {
+      return res.status(404).json({ message: 'Manzana no encontrada' });
+    }
+
+    // Consulta simplificada paso a paso
+    // 1. Obtener viviendas básicas
+    const [viviendas] = await pool.query(
+      'SELECT id, numero_vivienda FROM Viviendas WHERE manzana_id = ?', 
+      [id]
+    );
+
+    // 2. Para cada vivienda, obtener sus métricas
+    const viviendasConProgreso = await Promise.all(
+      viviendas.map(async (vivienda) => {
+        const [partidas] = await pool.query(
+          'SELECT COUNT(*) as count FROM tareas WHERE vivienda_id = ?',
+          [vivienda.id]
+        );
+        
+        const [tareas] = await pool.query(
+          `SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN progreso = 100 THEN 1 ELSE 0 END) as completadas
+           FROM tareas t
+           JOIN tareas pt ON t.id = pt.tarea_id
+           WHERE pt.vivienda_id = ?`,
+          [vivienda.id]
+        );
+
+        return {
+          ...vivienda,
+          partidas_count: partidas[0].count,
+          tareas_totales: tareas[0].total,
+          tareas_completadas: tareas[0].completadas,
+          progreso_general: tareas[0].total > 0 
+            ? Math.round((tareas[0].completadas / tareas[0].total) * 100)
+            : 0
+        };
+      })
+    );
+
+    res.json(viviendasConProgreso);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Error al obtener las viviendas' });
+    console.error('Error en getViviendasByManzana:', error);
+    res.status(500).json({ 
+      message: 'Error al obtener viviendas',
+      error: error.message,
+      stack: error.stack // Solo para desarrollo
+    });
   }
 };

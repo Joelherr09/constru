@@ -3,7 +3,10 @@ const router = express.Router();
 const manzanaController = require('../controllers/manzanaController');
 const authMiddleware = require('../middleware/authMiddleware');
 
-router.get('/', authMiddleware(), manzanaController.getManzanas);
-router.get('/:id/viviendas', authMiddleware, manzanaController.getViviendasByManzana);
+// Todas las rutas requieren autenticación
+router.use(authMiddleware());
+
+router.get('/', manzanaController.getManzanas);
+router.get('/:id/viviendas', manzanaController.getViviendasByManzana);
 
 module.exports = router;
