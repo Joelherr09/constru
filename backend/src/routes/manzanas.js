@@ -7,6 +7,8 @@ const authMiddleware = require('../middleware/authMiddleware');
 router.use(authMiddleware());
 
 router.get('/', manzanaController.getManzanas);
+router.get('/:id', authMiddleware(), manzanaController.getManzanaById);
 router.get('/:id/viviendas', manzanaController.getViviendasByManzana);
+router.post('/', authMiddleware(['administrador']), manzanaController.createManzana);
 
 module.exports = router;

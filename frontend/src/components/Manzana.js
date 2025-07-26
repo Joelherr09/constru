@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Dialog } from '@headlessui/react';
 import BottomBar from './BottomBar';
 
-function Manzanas() {
+function Manzana() {
   const { id } = useParams();
   const [manzana, setManzana] = useState(null);
   const [viviendas, setViviendas] = useState([]);
@@ -20,6 +20,12 @@ function Manzanas() {
 
   useEffect(() => {
     const fetchManzanaData = async () => {
+      if (!id || id === 'undefined') {
+        setError('ID de manzana inválido');
+        setLoading(false);
+        return;
+      }
+
       try {
         const token = localStorage.getItem('token');
         if (!token) {
@@ -134,10 +140,10 @@ function Manzanas() {
           {error}
         </div>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => navigate('/dashboard')}
           className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
         >
-          Reintentar
+          Volver al Dashboard
         </button>
       </div>
     );
@@ -343,4 +349,4 @@ function Manzanas() {
   );
 }
 
-export default Manzanas;
+export default Manzana;

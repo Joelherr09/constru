@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import Vivienda from './components/Vivienda';
 import PrivateRoute from './components/PrivateRoute';
 import Manzanas from './components/Manzanas';
+import Manzana from './components/Manzana';
 import './index.css';
 
 function App() {
@@ -30,6 +31,7 @@ function App() {
             }
           />
           <Route path="/manzanas" element={<Manzanas />} />
+          <Route path="/manzana/:id" element={<Manzana />} />
           <Route path="/" element={<Login />} />
         </Routes>
       </div>
