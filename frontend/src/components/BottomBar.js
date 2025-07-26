@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaHome, FaChartBar } from 'react-icons/fa';
+import {  FaChartBar } from 'react-icons/fa';
 
 const BottomBar = () => {
   const navigate = useNavigate();

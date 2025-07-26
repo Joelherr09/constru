@@ -3,55 +3,117 @@ const pool = require('../config/database');
 exports.getVivienda = async (req, res) => {
   const { id } = req.params;
   try {
-    console.log(`Buscando vivienda con id: ${id}`);
     const [viviendas] = await pool.query(`
-      SELECT v.*, m.nombre as manzana_nombre
+      SELECT 
+        v.id, 
+        v.numero_vivienda, 
+        v.tipo_vivienda,
+        m.nombre AS manzana_nombre
       FROM Viviendas v
       JOIN Manzanas m ON v.manzana_id = m.id
       WHERE v.id = ?
     `, [id]);
+
     if (viviendas.length === 0) {
       return res.status(404).json({ message: 'Vivienda no encontrada' });
     }
-    const vivienda = viviendas[0];
 
-    const [partidas] = await pool.query(`
-      SELECT p.id as partida_id, p.nombre as partida_nombre
-      FROM Partidas p
-    `);
+    const [progreso] = await pool.query(`
+      SELECT 
+        p.id AS partida_id,
+        p.nombre AS partida_nombre,
+        t.id AS tarea_id,
+        t.nombre AS tarea,
+        t.requiere_trazo,
+        pc.progreso,
+        pc.trazada,
+        pc.notas
+      FROM Progreso_Construccion pc
+      JOIN Tareas t ON pc.tarea_id = t.id
+      JOIN Partidas p ON t.partida_id = p.id
+      WHERE pc.vivienda_id = ?
+      ORDER BY p.id, t.id
+    `, [id]);
 
-    const materiales = await Promise.all(
-      partidas.map(async (partida) => {
-        const [mats] = await pool.query(`
-          SELECT m.id as material_id, m.nombre, mt.cantidad_requerida, em.entregado, t.nombre as tarea_nombre
-          FROM Entrega_Materiales em
-          JOIN Materiales m ON em.material_id = m.id
-          JOIN Materiales_Tarea mt ON m.id = mt.material_id
-          JOIN Tareas t ON mt.tarea_id = t.id
-          JOIN Partidas p ON t.partida_id = p.id
-          WHERE em.vivienda_id = ? AND p.id = ?
-        `, [id, partida.partida_id]);
-        return { partida_id: partida.partida_id, partida_nombre: partida.partida_nombre, materiales: mats };
-      })
-    );
+    const [materiales] = await pool.query(`
+      SELECT 
+        p.id AS partida_id,
+        p.nombre AS partida_nombre,
+        t.nombre AS tarea_nombre,
+        m.id AS material_id,
+        m.nombre,
+        em.cantidad_requerida,
+        em.entregado
+      FROM Entrega_Materiales em
+      JOIN Materiales m ON em.material_id = m.id
+      JOIN Materiales_Tarea mt ON m.id = mt.material_id
+      JOIN Tareas t ON mt.tarea_id = t.id
+      JOIN Partidas p ON t.partida_id = p.id
+      WHERE em.vivienda_id = ?
+      ORDER BY p.id, t.id, m.id
+    `, [id]);
+    console.log('Materiales devueltos:', materiales); // Depuración
 
-    const progreso = await Promise.all(
-      partidas.map(async (partida) => {
-        const [prog] = await pool.query(`
-          SELECT t.id as tarea_id, t.nombre as tarea, pc.progreso, pc.trazada, pc.notas, t.requiere_trazo
-          FROM Progreso_Construccion pc
-          JOIN Tareas t ON pc.tarea_id = t.id
-          JOIN Partidas p ON t.partida_id = p.id
-          WHERE pc.vivienda_id = ? AND p.id = ?
-        `, [id, partida.partida_id]);
-        return { partida_id: partida.partida_id, partida_nombre: partida.partida_nombre, tareas: prog };
-      })
-    );
+    const partidas = {
+      progreso: progreso.reduce((acc, curr) => {
+        const partida = acc.find((p) => p.partida_id === curr.partida_id);
+        if (partida) {
+          partida.tareas.push({
+            tarea_id: curr.tarea_id,
+            tarea: curr.tarea,
+            requiere_trazo: curr.requiere_trazo,
+            progreso: curr.progreso,
+            trazada: curr.trazada,
+            notas: curr.notas,
+          });
+        } else {
+          acc.push({
+            partida_id: curr.partida_id,
+            partida_nombre: curr.partida_nombre,
+            tareas: [
+              {
+                tarea_id: curr.tarea_id,
+                tarea: curr.tarea,
+                requiere_trazo: curr.requiere_trazo,
+                progreso: curr.progreso,
+                trazada: curr.trazada,
+                notas: curr.notas,
+              },
+            ],
+          });
+        }
+        return acc;
+      }, []),
+      materiales: materiales.reduce((acc, curr) => {
+        const partida = acc.find((p) => p.partida_id === curr.partida_id);
+        if (partida) {
+          partida.materiales.push({
+            material_id: curr.material_id,
+            nombre: curr.nombre,
+            cantidad_requerida: curr.cantidad_requerida,
+            entregado: curr.entregado,
+            tarea_nombre: curr.tarea_nombre,
+          });
+        } else {
+          acc.push({
+            partida_id: curr.partida_id,
+            partida_nombre: curr.partida_nombre,
+            materiales: [
+              {
+                material_id: curr.material_id,
+                nombre: curr.nombre,
+                cantidad_requerida: curr.cantidad_requerida,
+                entregado: curr.entregado,
+                tarea_nombre: curr.tarea_nombre,
+              },
+            ],
+          });
+        }
+        return acc;
+      }, []),
+    };
 
-    res.json({
-      vivienda,
-      partidas: { materiales, progreso },
-    });
+    res.json({ vivienda: viviendas[0], partidas });
   } catch (error) {
     console.error('Error en getVivienda:', error);
     res.status(500).json({ message: 'Error en el servidor', error: error.message });
@@ -192,6 +254,7 @@ exports.addTareaToVivienda = async (req, res) => {
 
     // Obtener tareas de la partida
     const [tareas] = await pool.query('SELECT id AS tarea_id FROM Tareas WHERE partida_id = ?', [partida_id]);
+    console.log('Tareas encontradas:', tareas); // Depuración
 
     // Verificar tareas no asignadas
     const [existingTareas] = await pool.query(
@@ -200,6 +263,7 @@ exports.addTareaToVivienda = async (req, res) => {
     );
     const existingTareaIds = existingTareas.map((t) => t.tarea_id);
     const newTareas = tareas.filter((t) => !existingTareaIds.includes(t.tarea_id));
+    console.log('Tareas nuevas a asignar:', newTareas); // Depuración
 
     if (newTareas.length === 0) {
       return res.status(400).json({ message: 'Todas las tareas de esta partida ya están asignadas' });
@@ -224,9 +288,10 @@ exports.addTareaToVivienda = async (req, res) => {
 
     // Obtener materiales asociados a las tareas nuevas
     const [materiales] = await connection.query(
-      'SELECT DISTINCT material_id, cantidad_requerida FROM Materiales_Tarea WHERE tarea_id IN (?)',
+      'SELECT DISTINCT mt.material_id, mt.cantidad_requerida, m.nombre FROM Materiales_Tarea mt JOIN Materiales m ON mt.material_id = m.id WHERE mt.tarea_id IN (?)',
       [newTareas.map((t) => t.tarea_id)]
     );
+    console.log('Materiales encontrados:', materiales); // Depuración
 
     // Asignar materiales a la vivienda
     if (materiales.length > 0) {
@@ -240,10 +305,13 @@ exports.addTareaToVivienda = async (req, res) => {
         'INSERT INTO Entrega_Materiales (vivienda_id, material_id, cantidad_requerida, entregado) VALUES ?',
         [entregaValues]
       );
+      console.log('Materiales insertados en Entrega_Materiales:', entregaValues); // Depuración
+    } else {
+      console.log('No se encontraron materiales para las tareas nuevas');
     }
 
     await connection.commit();
-    res.json({ message: 'Tareas y materiales asignados a la vivienda' });
+    res.json({ message: 'Tareas y materiales asignados a la vivienda', materialesAsignados: materiales });
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('Error en addTareaToVivienda:', error);
