@@ -189,12 +189,6 @@ function Vivienda() {
       {user.rol === 'administrador' && (
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <button
-            onClick={() => setIsPartidaModalOpen(true)}
-            className="w-full sm:w-auto bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            Añadir Partida
-          </button>
-          <button
             onClick={() => setIsTareaModalOpen(true)}
             disabled={tareas.length === 0}
             className={`w-full sm:w-auto py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${

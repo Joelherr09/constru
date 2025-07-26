@@ -222,10 +222,31 @@ exports.addTareaToVivienda = async (req, res) => {
       [progresoValues]
     );
 
+    // Obtener materiales asociados a las tareas nuevas
+    const [materiales] = await connection.query(
+      'SELECT DISTINCT material_id, cantidad_requerida FROM Materiales_Tarea WHERE tarea_id IN (?)',
+      [newTareas.map((t) => t.tarea_id)]
+    );
+
+    // Asignar materiales a la vivienda
+    if (materiales.length > 0) {
+      const entregaValues = materiales.map((material) => [
+        id,
+        material.material_id,
+        material.cantidad_requerida,
+        false, // Entregado inicial
+      ]);
+      await connection.query(
+        'INSERT INTO Entrega_Materiales (vivienda_id, material_id, cantidad_requerida, entregado) VALUES ?',
+        [entregaValues]
+      );
+    }
+
     await connection.commit();
-    res.json({ message: 'Tareas asignadas a la vivienda' });
+    res.json({ message: 'Tareas y materiales asignados a la vivienda' });
   } catch (error) {
     if (connection) await connection.rollback();
+    console.error('Error en addTareaToVivienda:', error);
     res.status(500).json({ message: 'Error en el servidor', error: error.message });
   } finally {
     if (connection) connection.release();
