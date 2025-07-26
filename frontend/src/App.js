@@ -4,6 +4,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Vivienda from './components/Vivienda';
 import PrivateRoute from './components/PrivateRoute';
+import Manzanas from './components/Manzanas';
 import './index.css';
 
 function App() {
@@ -28,6 +29,7 @@ function App() {
               </PrivateRoute>
             }
           />
+          <Route path="/manzanas" element={<Manzanas />} />
           <Route path="/" element={<Login />} />
         </Routes>
       </div>
