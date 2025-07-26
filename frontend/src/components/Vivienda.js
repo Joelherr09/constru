@@ -8,7 +8,7 @@ function Vivienda() {
   const { id } = useParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [partidas, setPartidas] = useState([]); // Lista de partidas para el select
+  const [partidas, setPartidas] = useState([]);
   const [selectedPartida, setSelectedPartida] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const user = JSON.parse(localStorage.getItem('user'));
@@ -67,7 +67,7 @@ function Vivienda() {
     }
   };
 
-  const handleProgresoUpdate = async (vivienda_id, tarea_id, progreso, trazada, tarea) => {
+  const handleProgresoUpdate = async (vivienda_id, tarea_id, progreso, trazada, notas, tarea) => {
     try {
       const newProgreso = window.prompt('Ingrese nuevo progreso (0-100):', progreso);
       if (newProgreso === null || isNaN(newProgreso) || newProgreso < 0 || newProgreso > 100) {
@@ -75,9 +75,10 @@ function Vivienda() {
       }
       // eslint-disable-next-line no-restricted-globals
       const newTrazada = tarea.requiere_trazo ? confirm('¿Está trazada?') : null;
+      const newNotas = window.prompt('Ingrese notas:', notas || '');
       await axios.put(
         `${process.env.REACT_APP_API_URL}/viviendas/progreso`,
-        { vivienda_id, tarea_id, progreso: parseInt(newProgreso), trazada: newTrazada },
+        { vivienda_id, tarea_id, progreso: parseInt(newProgreso), trazada: newTrazada, notas: newNotas || '' },
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
       setData((prev) => ({
@@ -88,7 +89,7 @@ function Vivienda() {
             ...partida,
             tareas: partida.tareas.map((t) =>
               t.tarea_id === tarea_id
-                ? { ...t, progreso: parseInt(newProgreso), trazada: newTrazada }
+                ? { ...t, progreso: parseInt(newProgreso), trazada: newTrazada, notas: newNotas || '' }
                 : t
             ),
           })),
@@ -123,7 +124,7 @@ function Vivienda() {
   if (error) return <div className="p-4 text-red-500 text-center">{error}</div>;
   if (!data) return <div className="p-4 text-center">Cargando...</div>;
 
-  const { vivienda, partidas: partidasData } = data; // Renombramos 'partidas' a 'partidasData'
+  const { vivienda, partidas: partidasData } = data;
 
   return (
     <div className="p-4 max-w-4xl mx-auto sm:p-6">
@@ -162,7 +163,14 @@ function Vivienda() {
                       {user.rol === 'administrador' && (
                         <button
                           onClick={() =>
-                            handleProgresoUpdate(vivienda.id, tarea.tarea_id, tarea.progreso, tarea.trazada, tarea)
+                            handleProgresoUpdate(
+                              vivienda.id,
+                              tarea.tarea_id,
+                              tarea.progreso,
+                              tarea.trazada,
+                              tarea.notas,
+                              tarea
+                            )
                           }
                           className="text-blue-500 hover:text-blue-700"
                         >
@@ -171,6 +179,11 @@ function Vivienda() {
                       )}
                     </div>
                   </div>
+                  {tarea.notas && (
+                    <div className="p-3 bg-gray-50 text-sm sm:text-base">
+                      <strong>Notas:</strong> {tarea.notas}
+                    </div>
+                  )}
                   <Disclosure>
                     {({ open }) => (
                       <>
@@ -202,7 +215,7 @@ function Vivienda() {
                                 .materiales.filter((m) => m.tarea_nombre === tarea.tarea)
                                 .map((material, index) => (
                                   <div
-                                    key={index}
+                                    key={`${material.material_id}-${index}`}
                                     className="flex items-center justify-between py-1 text-sm sm:text-base"
                                   >
                                     <span>

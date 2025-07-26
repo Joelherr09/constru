@@ -6,8 +6,8 @@ exports.getVivienda = async (req, res) => {
     console.log(`Buscando vivienda con id: ${id}`);
     const [viviendas] = await pool.query(`
       SELECT v.*, m.nombre as manzana_nombre
-      FROM viviendas v
-      JOIN manzanas m ON v.manzana_id = m.id
+      FROM Viviendas v
+      JOIN Manzanas m ON v.manzana_id = m.id
       WHERE v.id = ?
     `, [id]);
     if (viviendas.length === 0) {
@@ -17,18 +17,18 @@ exports.getVivienda = async (req, res) => {
 
     const [partidas] = await pool.query(`
       SELECT p.id as partida_id, p.nombre as partida_nombre
-      FROM partidas p
+      FROM Partidas p
     `);
 
     const materiales = await Promise.all(
       partidas.map(async (partida) => {
         const [mats] = await pool.query(`
           SELECT m.id as material_id, m.nombre, mt.cantidad_requerida, em.entregado, t.nombre as tarea_nombre
-          FROM entrega_materiales em
-          JOIN materiales m ON em.material_id = m.id
-          JOIN materiales_tarea mt ON m.id = mt.material_id
-          JOIN tareas t ON mt.tarea_id = t.id
-          JOIN partidas p ON t.partida_id = p.id
+          FROM Entrega_Materiales em
+          JOIN Materiales m ON em.material_id = m.id
+          JOIN Materiales_Tarea mt ON m.id = mt.material_id
+          JOIN Tareas t ON mt.tarea_id = t.id
+          JOIN Partidas p ON t.partida_id = p.id
           WHERE em.vivienda_id = ? AND p.id = ?
         `, [id, partida.partida_id]);
         return { partida_id: partida.partida_id, partida_nombre: partida.partida_nombre, materiales: mats };
@@ -38,10 +38,10 @@ exports.getVivienda = async (req, res) => {
     const progreso = await Promise.all(
       partidas.map(async (partida) => {
         const [prog] = await pool.query(`
-          SELECT t.id as tarea_id, t.nombre as tarea, pc.progreso, pc.trazada, t.requiere_trazo
-          FROM progreso_construccion pc
-          JOIN tareas t ON pc.tarea_id = t.id
-          JOIN partidas p ON t.partida_id = p.id
+          SELECT t.id as tarea_id, t.nombre as tarea, pc.progreso, pc.trazada, pc.notas, t.requiere_trazo
+          FROM Progreso_Construccion pc
+          JOIN Tareas t ON pc.tarea_id = t.id
+          JOIN Partidas p ON t.partida_id = p.id
           WHERE pc.vivienda_id = ? AND p.id = ?
         `, [id, partida.partida_id]);
         return { partida_id: partida.partida_id, partida_nombre: partida.partida_nombre, tareas: prog };
@@ -73,11 +73,11 @@ exports.updateMaterial = async (req, res) => {
 };
 
 exports.updateProgreso = async (req, res) => {
-  const { vivienda_id, tarea_id, progreso, trazada } = req.body;
+  const { vivienda_id, tarea_id, progreso, trazada, notas } = req.body;
   try {
     await pool.query(
-      'UPDATE progreso_construccion SET progreso = ?, trazada = ? WHERE vivienda_id = ? AND tarea_id = ?',
-      [progreso, trazada, vivienda_id, tarea_id]
+      'UPDATE Progreso_Construccion SET progreso = ?, trazada = ?, notas = ? WHERE vivienda_id = ? AND tarea_id = ?',
+      [progreso, trazada, notas, vivienda_id, tarea_id]
     );
     res.json({ message: 'Progreso actualizado' });
   } catch (error) {
