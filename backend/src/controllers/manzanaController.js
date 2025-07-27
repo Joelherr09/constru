@@ -14,7 +14,7 @@ exports.getManzanas = async (req, res) => {
     res.status(500).json({ 
       message: 'Error en el servidor', 
       error: error.message,
-      stack: error.stack // Para más detalles en desarrollo
+      stack: error.stack
     });
   }
 };
@@ -86,7 +86,7 @@ exports.createManzana = async (req, res) => {
     // Obtener IDs de las viviendas creadas
     const [viviendas] = await connection.query('SELECT id FROM Viviendas WHERE manzana_id = ?', [manzanaId]);
 
-    // Obtener todas las tareas de todas las partidas
+    // Obtener todas las tareas
     const [tareas] = await connection.query('SELECT id AS tarea_id FROM Tareas');
 
     // Asignar todas las tareas a cada vivienda en Progreso_Construccion
@@ -110,9 +110,40 @@ exports.createManzana = async (req, res) => {
       );
     }
 
+    // Obtener materiales asociados a las tareas con cantidades
+    const [materiales] = await connection.query(
+      'SELECT DISTINCT mt.material_id, mt.tarea_id, mt.cantidad_requerida FROM Materiales_Tarea mt WHERE mt.tarea_id IN (?)',
+      [tareas.map((t) => t.tarea_id)]
+    );
+    console.log('Materiales encontrados para tareas:', materiales);
+
+    // Asignar materiales a cada vivienda en Entrega_Materiales
+    const entregaValues = [];
+    for (const vivienda of viviendas) {
+      for (const material of materiales) {
+        entregaValues.push([
+          vivienda.id,
+          material.material_id,
+          material.cantidad_requerida, // Agregar la cantidad desde Materiales_Tarea
+          false, // entregado
+          null, // fecha_entrega
+        ]);
+      }
+    }
+
+    if (entregaValues.length > 0) {
+      await connection.query(
+        'INSERT INTO Entrega_Materiales (vivienda_id, material_id, cantidad, entregado, fecha_entrega) VALUES ?',
+        [entregaValues]
+      );
+      console.log('Materiales insertados en Entrega_Materiales:', entregaValues);
+    } else {
+      console.log('No se encontraron materiales para las tareas');
+    }
+
     // Confirmar transacción
     await connection.commit();
-    res.json({ id: manzanaId, message: 'Manzana creada con tareas asignadas' });
+    res.json({ id: manzanaId, message: 'Manzana creada con tareas y materiales asignados' });
   } catch (error) {
     if (connection) await connection.rollback();
     console.error('Error en createManzana:', error);

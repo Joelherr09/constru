@@ -47,21 +47,20 @@ function Vivienda() {
   }, [id]);
 
   const getMaterialesAgrupados = (materiales) => {
-    const agrupados = {};
+    const materialesUnicos = {};
+    
     materiales.forEach((material) => {
-      const key = `${material.tarea_id}-${material.nombre}`;
-      if (!agrupados[key]) {
-        agrupados[key] = {
+      // Si ya hemos procesado este material_id en esta tarea, lo ignoramos
+      if (!materialesUnicos[material.material_id]) {
+        materialesUnicos[material.material_id] = {
           ...material,
           cantidad_total: material.cantidad_requerida,
-          ids: [material.material_id],
+          ids: [material.material_id]
         };
-      } else {
-        agrupados[key].cantidad_total += material.cantidad_requerida;
-        agrupados[key].ids.push(material.material_id);
       }
     });
-    return Object.values(agrupados);
+    
+    return Object.values(materialesUnicos);
   };
 
   const handleMaterialUpdate = async (vivienda_id, material_ids, entregado) => {
@@ -221,7 +220,7 @@ function Vivienda() {
   const { vivienda, partidas: partidasData } = data;
 
   return (
-    <div className="p-4 max-w-4xl mx-auto sm:p-6">
+    <div className="p-4 max-w-4xl mx-auto sm:p-6 pb-16"> {/* Added pb-16 for padding-bottom */}
       <h1 className="text-2xl font-bold mb-4 text-center sm:text-3xl">
         Vivienda {vivienda.numero_vivienda} - {vivienda.manzana_nombre}
       </h1>
@@ -280,9 +279,23 @@ function Vivienda() {
                       {user.rol === 'administrador' && (
                         <button
                           onClick={() => openProgresoModal(tarea)}
-                          className="text-blue-500 hover:text-blue-700"
+                          className="text-blue-500 hover:text-blue-700 focus:outline-none"
+                          title="Editar Progreso"
                         >
-                          (+)
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                            />
+                          </svg>
                         </button>
                       )}
                     </div>
@@ -318,11 +331,11 @@ function Vivienda() {
                             {materialesTarea.length > 0 ? (
                               getMaterialesAgrupados(materialesTarea).map((material, index) => (
                                 <div
-                                  key={`${material.tarea_id}-${material.nombre}-${index}`}
+                                  key={`${material.material_id}-${index}`}
                                   className="flex items-center justify-between py-1 text-sm sm:text-base border-b border-gray-100 last:border-0"
                                 >
                                   <span>
-                                    {material.nombre} ({material.cantidad_total})
+                                    {material.nombre} ({material.cantidad_requerida})
                                   </span>
                                   <input
                                     type="checkbox"

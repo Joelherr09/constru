@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 
+
 exports.getVivienda = async (req, res) => {
   const { id } = req.params;
   try {
@@ -47,17 +48,18 @@ exports.getVivienda = async (req, res) => {
         t.nombre AS tarea_nombre,
         m.id AS material_id,
         m.nombre,
-        em.cantidad_requerida,
-        em.entregado
+        mt.cantidad_requerida,
+        em.entregado,
+        em.fecha_entrega
       FROM Entrega_Materiales em
       JOIN Materiales m ON em.material_id = m.id
-      JOIN Materiales_Tarea mt ON m.id = mt.material_id
-      JOIN Tareas t ON mt.tarea_id = t.id
+      JOIN Tareas t ON em.vivienda_id = ?  -- Join Tareas via Progreso_Construccion to ensure valid tasks
+      JOIN Materiales_Tarea mt ON mt.material_id = m.id AND mt.tarea_id = t.id
       JOIN Partidas p ON t.partida_id = p.id
       WHERE em.vivienda_id = ?
       ORDER BY p.id, t.id, m.id
     `,
-      [id]
+      [id, id]
     );
     console.log('Materiales devueltos:', materiales);
     const partidas = {
@@ -100,6 +102,7 @@ exports.getVivienda = async (req, res) => {
             entregado: curr.entregado,
             tarea_id: curr.tarea_id,
             tarea_nombre: curr.tarea_nombre,
+            fecha_entrega: curr.fecha_entrega,
           });
         } else {
           acc.push({
@@ -113,6 +116,7 @@ exports.getVivienda = async (req, res) => {
                 entregado: curr.entregado,
                 tarea_id: curr.tarea_id,
                 tarea_nombre: curr.tarea_nombre,
+                fecha_entrega: curr.fecha_entrega,
               },
             ],
           });
@@ -124,6 +128,107 @@ exports.getVivienda = async (req, res) => {
   } catch (error) {
     console.error('Error en getVivienda:', error);
     res.status(500).json({ message: 'Error en el servidor', error: error.message });
+  }
+};
+
+exports.getViviendaById = async (req, res) => {
+  const { id } = req.params;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+
+    // Obtener datos de la vivienda
+    const [vivienda] = await connection.query(
+      'SELECT v.id, v.numero_vivienda, m.nombre AS manzana_nombre ' +
+      'FROM Viviendas v ' +
+      'JOIN Manzanas m ON v.manzana_id = m.id ' +
+      'WHERE v.id = ?',
+      [id]
+    );
+
+    if (!vivienda.length) {
+      return res.status(404).json({ message: 'Vivienda no encontrada' });
+    }
+
+    // Obtener progreso de tareas
+    const [progreso] = await connection.query(
+      'SELECT p.partida_id, p.nombre AS partida_nombre, ' +
+      't.id AS tarea_id, t.nombre AS tarea, pc.progreso, pc.trazada, pc.notas, t.requiere_trazo ' +
+      'FROM Progreso_Construccion pc ' +
+      'JOIN Tareas t ON pc.tarea_id = t.id ' +
+      'JOIN Partidas p ON t.partida_id = p.id ' +
+      'WHERE pc.vivienda_id = ? ' +
+      'ORDER BY p.partida_id, t.id',
+      [id]
+    );
+
+    // Obtener materiales, asegurando unicidad
+    const [materiales] = await connection.query(
+      'SELECT p.partida_id, p.nombre AS partida_nombre, t.id AS tarea_id, t.nombre AS tarea_nombre, ' +
+      'm.id AS material_id, m.nombre, SUM(em.cantidad) AS cantidad_requerida, MIN(em.entregado) AS entregado, MAX(em.fecha_entrega) AS fecha_entrega ' +
+      'FROM Entrega_Materiales em ' +
+      'JOIN Materiales m ON em.material_id = m.id ' +
+      'JOIN Materiales_Tarea mt ON m.id = mt.material_id AND mt.tarea_id = t.id ' +
+      'JOIN Tareas t ON mt.tarea_id = t.id ' +
+      'JOIN Partidas p ON t.partida_id = p.id ' +
+      'WHERE em.vivienda_id = ? ' +
+      'GROUP BY p.partida_id, t.id, m.id, m.nombre ' +
+      'ORDER BY p.partida_id, t.id, m.id',
+      [id]
+    );
+
+    // Estructurar los datos
+    const partidasMap = {};
+    progreso.forEach((row) => {
+      if (!partidasMap[row.partida_id]) {
+        partidasMap[row.partida_id] = {
+          partida_id: row.partida_id,
+          partida_nombre: row.partida_nombre,
+          tareas: [],
+        };
+      }
+      partidasMap[row.partida_id].tareas.push({
+        tarea_id: row.tarea_id,
+        tarea: row.tarea,
+        progreso: row.progreso,
+        trazada: row.trazada,
+        notas: row.notas,
+        requiere_trazo: row.requiere_trazo,
+      });
+    });
+
+    const materialesMap = {};
+    materiales.forEach((row) => {
+      if (!materialesMap[row.partida_id]) {
+        materialesMap[row.partida_id] = {
+          partida_id: row.partida_id,
+          partida_nombre: row.partida_nombre,
+          materiales: [],
+        };
+      }
+      materialesMap[row.partida_id].materiales.push({
+        tarea_id: row.tarea_id,
+        tarea_nombre: row.tarea_nombre,
+        material_id: row.material_id,
+        nombre: row.nombre,
+        cantidad_requerida: row.cantidad_requerida,
+        entregado: row.entregado,
+        fecha_entrega: row.fecha_entrega,
+      });
+    });
+
+    res.json({
+      vivienda: vivienda[0],
+      partidas: {
+        progreso: Object.values(partidasMap),
+        materiales: Object.values(materialesMap),
+      },
+    });
+  } catch (error) {
+    console.error('Error en getViviendaById:', error);
+    res.status(500).json({ message: 'Error en el servidor', error: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 };
 
@@ -158,29 +263,106 @@ exports.updateVivienda = async (req, res) => {
 
 exports.updateMaterial = async (req, res) => {
   const { vivienda_id, material_id, entregado } = req.body;
+  let connection;
   try {
-    await pool.query(
-      'UPDATE entrega_materiales SET entregado = ? WHERE vivienda_id = ? AND material_id = ?',
-      [entregado, vivienda_id, material_id]
+    connection = await pool.getConnection();
+    await connection.query(
+      'UPDATE Entrega_Materiales SET entregado = ?, fecha_entrega = ? WHERE vivienda_id = ? AND material_id = ?',
+      [entregado, entregado ? new Date() : null, vivienda_id, material_id]
     );
-    res.json({ message: 'Material actualizado' });
+    await connection.commit();
+    res.json({ message: 'Material actualizado correctamente' });
   } catch (error) {
+    if (connection) await connection.rollback();
     console.error('Error en updateMaterial:', error);
     res.status(500).json({ message: 'Error en el servidor', error: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 };
 
 exports.updateProgreso = async (req, res) => {
   const { vivienda_id, tarea_id, progreso, trazada, notas } = req.body;
+  let connection;
   try {
-    await pool.query(
+    console.log('Received updateProgreso request:', { vivienda_id, tarea_id, progreso, trazada, notas });
+    connection = await pool.getConnection();
+    const [result] = await connection.query(
       'UPDATE Progreso_Construccion SET progreso = ?, trazada = ?, notas = ? WHERE vivienda_id = ? AND tarea_id = ?',
       [progreso, trazada, notas, vivienda_id, tarea_id]
     );
-    res.json({ message: 'Progreso actualizado' });
+    console.log('Query result:', result);
+    await connection.commit();
+    res.json({ message: 'Progreso actualizado correctamente' });
   } catch (error) {
+    if (connection) await connection.rollback();
     console.error('Error en updateProgreso:', error);
     res.status(500).json({ message: 'Error en el servidor', error: error.message });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+exports.addPartidaToVivienda = async (req, res) => {
+  const { id } = req.params;
+  const { partida_id } = req.body;
+  let connection;
+  try {
+    if (!partida_id) {
+      return res.status(400).json({ message: 'Partida ID es requerido' });
+    }
+    const [viviendas] = await pool.query('SELECT id FROM Viviendas WHERE id = ?', [id]);
+    if (viviendas.length === 0) {
+      return res.status(404).json({ message: 'Vivienda no encontrada' });
+    }
+    const [partidas] = await pool.query('SELECT id FROM Partidas WHERE id = ?', [partida_id]);
+    if (partidas.length === 0) {
+      return res.status(404).json({ message: 'Partida no encontrada' });
+    }
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [existingProgreso] = await pool.query(
+      'SELECT tarea_id FROM Progreso_Construccion pc JOIN Tareas t ON pc.tarea_id = t.id WHERE pc.vivienda_id = ? AND t.partida_id = ?',
+      [id, partida_id]
+    );
+    if (existingProgreso.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'La partida ya está asignada a esta vivienda' });
+    }
+    const [tareas] = await pool.query('SELECT id AS tarea_id FROM Tareas WHERE partida_id = ?', [partida_id]);
+    if (tareas.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'No hay tareas asociadas a esta partida' });
+    }
+    const progresoValues = tareas.map((tarea) => [id, tarea.tarea_id, 0, null, '']);
+    await connection.query(
+      'INSERT INTO Progreso_Construccion (vivienda_id, tarea_id, progreso, trazada, notas) VALUES ?',
+      [progresoValues]
+    );
+    const [materiales] = await connection.query(
+      'SELECT DISTINCT mt.material_id, mt.cantidad_requerida, m.nombre, mt.tarea_id FROM Materiales_Tarea mt JOIN Materiales m ON mt.material_id = m.id WHERE mt.tarea_id IN (?)',
+      [tareas.map((t) => t.tarea_id)]
+    );
+    if (materiales.length > 0) {
+      const entregaValues = materiales.map((material) => [
+        id,
+        material.material_id,
+        false,
+        null,
+      ]);
+      await connection.query(
+        'INSERT INTO Entrega_Materiales (vivienda_id, material_id, entregado, fecha_entrega) VALUES ?',
+        [entregaValues]
+      );
+    }
+    await connection.commit();
+    res.json({ message: 'Partida y tareas asignadas a la vivienda' });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Error en addPartidaToVivienda:', error);
+    res.status(500).json({ message: 'Error en el servidor', error: error.message });
+  } finally {
+    if (connection) connection.release();
   }
 };
 
@@ -228,11 +410,11 @@ exports.addTareaToVivienda = async (req, res) => {
       const entregaValues = materiales.map((material) => [
         id,
         material.material_id,
-        material.cantidad_requerida,
         false,
+        null,
       ]);
       await connection.query(
-        'INSERT INTO Entrega_Materiales (vivienda_id, material_id, cantidad_requerida, entregado) VALUES ?',
+        'INSERT INTO Entrega_Materiales (vivienda_id, material_id, entregado, fecha_entrega) VALUES ?',
         [entregaValues]
       );
       console.log('Materiales insertados en Entrega_Materiales:', entregaValues);
