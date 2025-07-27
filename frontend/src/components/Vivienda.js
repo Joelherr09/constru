@@ -19,57 +19,42 @@ function Vivienda() {
   const user = JSON.parse(localStorage.getItem('user'));
 
   useEffect(() => {
-    const fetchVivienda = async () => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/viviendas/${id}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-        console.log('Datos de vivienda:', response.data); // Depuración
-        setData(response.data);
+        const [viviendaRes, partidasRes, tareasRes] = await Promise.all([
+          axios.get(`${process.env.REACT_APP_API_URL}/viviendas/${id}`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+          }),
+          axios.get(`${process.env.REACT_APP_API_URL}/partidas`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+          }),
+          axios.get(`${process.env.REACT_APP_API_URL}/tareas`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+          }),
+        ]);
+
+        console.log('Datos de vivienda:', viviendaRes.data); // Depuración
+        setData(viviendaRes.data);
+        setPartidas(partidasRes.data);
+        setTareas(tareasRes.data);
       } catch (err) {
-        console.error('Error fetching vivienda:', err);
-        setError(err.response?.data?.message || 'Error al cargar datos de la vivienda');
+        console.error('Error fetching data:', err);
+        setError(err.response?.data?.message || 'Error al cargar datos');
       }
     };
 
-    const fetchPartidas = async () => {
-      try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/partidas`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-        setPartidas(response.data);
-      } catch (err) {
-        console.error('Error fetching partidas:', err);
-        setError((prev) => prev || 'Error al cargar partidas');
-      }
-    };
-
-    const fetchTareas = async () => {
-      try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/tareas`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-        setTareas(response.data);
-      } catch (err) {
-        console.error('Error fetching tareas:', err);
-        setError((prev) => prev || 'Error al cargar tareas');
-      }
-    };
-
-    fetchVivienda();
-    fetchPartidas();
-    fetchTareas();
+    fetchData();
   }, [id]);
 
   const getMaterialesAgrupados = (materiales) => {
     const agrupados = {};
-    materiales.forEach(material => {
-      const key = `${material.tarea_nombre}-${material.nombre}`;
+    materiales.forEach((material) => {
+      const key = `${material.tarea_id}-${material.nombre}`;
       if (!agrupados[key]) {
         agrupados[key] = {
           ...material,
           cantidad_total: material.cantidad_requerida,
-          ids: [material.material_id]
+          ids: [material.material_id],
         };
       } else {
         agrupados[key].cantidad_total += material.cantidad_requerida;
@@ -79,26 +64,29 @@ function Vivienda() {
     return Object.values(agrupados);
   };
 
-  const handleMaterialUpdate = async (vivienda_id, material_id, entregado) => {
+  const handleMaterialUpdate = async (vivienda_id, material_ids, entregado) => {
     try {
-      await axios.put(
-        `${process.env.REACT_APP_API_URL}/viviendas/material`,
-        { vivienda_id, material_id, entregado: !entregado },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      await Promise.all(
+        material_ids.map((material_id) =>
+          axios.put(
+            `${process.env.REACT_APP_API_URL}/viviendas/material`,
+            { vivienda_id, material_id, entregado: !entregado },
+            { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+          )
+        )
       );
-      setData(prev => ({
+
+      setData((prev) => ({
         ...prev,
         partidas: {
           ...prev.partidas,
-          materiales: prev.partidas.materiales.map(partida => ({
+          materiales: prev.partidas.materiales.map((partida) => ({
             ...partida,
-            materiales: partida.materiales.map(m => 
-              material_ids.includes(m.material_id) 
-                ? { ...m, entregado: !entregado } 
-                : m
-            )
-          }))
-        }
+            materiales: partida.materiales.map((m) =>
+              material_ids.includes(m.material_id) ? { ...m, entregado: !entregado } : m
+            ),
+          })),
+        },
       }));
     } catch (err) {
       setError(err.response?.data?.message || 'Error al actualizar material');
@@ -108,12 +96,14 @@ function Vivienda() {
   const handleProgresoUpdate = async (e) => {
     e.preventDefault();
     if (!selectedTarea) return;
+
     try {
       const { progreso, trazada, notas } = progresoForm;
       if (isNaN(progreso) || progreso < 0 || progreso > 100) {
         setError('El progreso debe ser un número entre 0 y 100');
         return;
       }
+
       await axios.put(
         `${process.env.REACT_APP_API_URL}/viviendas/progreso`,
         {
@@ -125,6 +115,7 @@ function Vivienda() {
         },
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
+
       setData((prev) => ({
         ...prev,
         partidas: {
@@ -144,6 +135,7 @@ function Vivienda() {
           })),
         },
       }));
+
       setIsProgresoModalOpen(false);
       setSelectedTarea(null);
       setProgresoForm({ progreso: '', trazada: false, notas: '' });
@@ -165,15 +157,18 @@ function Vivienda() {
   const handleAddPartida = async (e) => {
     e.preventDefault();
     if (!selectedPartida) return;
+
     try {
       await axios.post(
         `${process.env.REACT_APP_API_URL}/viviendas/${id}/partidas`,
         { partida_id: selectedPartida },
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
+
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/viviendas/${id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
+
       setData(response.data);
       setIsPartidaModalOpen(false);
       setSelectedPartida('');
@@ -185,17 +180,19 @@ function Vivienda() {
   const handleAddTarea = async (e) => {
     e.preventDefault();
     if (!selectedPartida) return;
+
     try {
-      const response = await axios.post(
+      await axios.post(
         `${process.env.REACT_APP_API_URL}/viviendas/${id}/tareas`,
         { partida_id: selectedPartida },
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
-      console.log('Respuesta de añadir tareas:', response.data); // Depuración
-      const updatedData = await axios.get(`${process.env.REACT_APP_API_URL}/viviendas/${id}`, {
+
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/viviendas/${id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
-      setData(updatedData.data);
+
+      setData(response.data);
       setIsTareaModalOpen(false);
       setSelectedPartida('');
     } catch (err) {
@@ -230,9 +227,7 @@ function Vivienda() {
       </h1>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-          {error}
-        </div>
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>
       )}
 
       {user.rol === 'administrador' && (
@@ -273,6 +268,7 @@ function Vivienda() {
                 ? materialesPartida.materiales.filter((m) => m.tarea_nombre === tarea.tarea)
                 : [];
               console.log(`Materiales para tarea ${tarea.tarea} (ID ${tarea.tarea_id}):`, materialesTarea); // Depuración
+
               return (
                 <div key={tarea.tarea_id} className="border rounded-lg">
                   <div className="flex justify-between items-center p-3 bg-gray-100">
@@ -320,20 +316,20 @@ function Vivienda() {
                         >
                           <Disclosure.Panel className="p-3 bg-white border-t">
                             {materialesTarea.length > 0 ? (
-                              materialesTarea.map((material, index) => (
+                              getMaterialesAgrupados(materialesTarea).map((material, index) => (
                                 <div
-                                  key={`${material.material_id}-${index}`}
-                                  className="flex items-center justify-between py-1 text-sm sm:text-base"
+                                  key={`${material.tarea_id}-${material.nombre}-${index}`}
+                                  className="flex items-center justify-between py-1 text-sm sm:text-base border-b border-gray-100 last:border-0"
                                 >
                                   <span>
-                                    {material.nombre} ({material.cantidad_requerida})
+                                    {material.nombre} ({material.cantidad_total})
                                   </span>
                                   <input
                                     type="checkbox"
                                     checked={material.entregado}
                                     onChange={() =>
                                       user.rol === 'administrador' &&
-                                      handleMaterialUpdate(vivienda.id, material.material_id, material.entregado)
+                                      handleMaterialUpdate(vivienda.id, material.ids, material.entregado)
                                     }
                                     disabled={user.rol !== 'administrador'}
                                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
