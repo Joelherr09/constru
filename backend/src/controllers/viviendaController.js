@@ -262,14 +262,50 @@ exports.updateVivienda = async (req, res) => {
 };
 
 exports.updateMaterial = async (req, res) => {
-  const { vivienda_id, material_id, entregado } = req.body;
+  const vivienda_id = req.params.id;
+  const { material_id, entregado } = req.body;
   let connection;
+
   try {
+    console.log('Received updateMaterial request:', { vivienda_id, material_id, entregado });
+
+    // Validate input
+    if (!vivienda_id || !material_id) {
+      return res.status(400).json({ message: 'vivienda_id y material_id son requeridos' });
+    }
+    if (typeof entregado !== 'boolean') {
+      return res.status(400).json({ message: 'entregado debe ser un booleano' });
+    }
+
     connection = await pool.getConnection();
-    await connection.query(
+
+    // Check if vivienda exists
+    const [viviendaRows] = await connection.query('SELECT * FROM Viviendas WHERE id = ?', [vivienda_id]);
+    if (viviendaRows.length === 0) {
+      return res.status(404).json({ message: 'Vivienda no encontrada' });
+    }
+
+    // Check if material record exists
+    const [materialRows] = await connection.query(
+      'SELECT * FROM Entrega_Materiales WHERE vivienda_id = ? AND material_id = ?',
+      [vivienda_id, material_id]
+    );
+    if (materialRows.length === 0) {
+      return res.status(404).json({ message: 'Registro de material no encontrado para esta vivienda' });
+    }
+
+    // Update material
+    const [result] = await connection.query(
       'UPDATE Entrega_Materiales SET entregado = ?, fecha_entrega = ? WHERE vivienda_id = ? AND material_id = ?',
       [entregado, entregado ? new Date() : null, vivienda_id, material_id]
     );
+
+    console.log('Update result:', result);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'No se pudo actualizar el material, verifica los IDs' });
+    }
+
     await connection.commit();
     res.json({ message: 'Material actualizado correctamente' });
   } catch (error) {
@@ -282,16 +318,48 @@ exports.updateMaterial = async (req, res) => {
 };
 
 exports.updateProgreso = async (req, res) => {
-  const { vivienda_id, tarea_id, progreso, trazada, notas } = req.body;
+  const vivienda_id = req.params.id; // Get vivienda_id from URL
+  const { tarea_id, progreso, trazada, notas } = req.body;
   let connection;
+
   try {
     console.log('Received updateProgreso request:', { vivienda_id, tarea_id, progreso, trazada, notas });
+
+    // Validate input
+    if (!vivienda_id || !tarea_id) {
+      return res.status(400).json({ message: 'vivienda_id y tarea_id son requeridos' });
+    }
+    if (isNaN(progreso) || progreso < 0 || progreso > 100) {
+      return res.status(400).json({ message: 'El progreso debe ser un número entre 0 y 100' });
+    }
+
     connection = await pool.getConnection();
+
+    // Check if vivienda exists
+    const [viviendaRows] = await connection.query('SELECT * FROM Viviendas WHERE id = ?', [vivienda_id]);
+    if (viviendaRows.length === 0) {
+      return res.status(404).json({ message: 'Vivienda no encontrada' });
+    }
+
+    // Check if progreso record exists
+    const [progresoRows] = await connection.query(
+      'SELECT * FROM Progreso_Construccion WHERE vivienda_id = ? AND tarea_id = ?',
+      [vivienda_id, tarea_id]
+    );
+    if (progresoRows.length === 0) {
+      return res.status(404).json({ message: 'Registro de progreso no encontrado para esta vivienda y tarea' });
+    }
+
+    // Update progreso
     const [result] = await connection.query(
       'UPDATE Progreso_Construccion SET progreso = ?, trazada = ?, notas = ? WHERE vivienda_id = ? AND tarea_id = ?',
       [progreso, trazada, notas, vivienda_id, tarea_id]
     );
-    console.log('Query result:', result);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'No se pudo actualizar el progreso, verifica los IDs' });
+    }
+
     await connection.commit();
     res.json({ message: 'Progreso actualizado correctamente' });
   } catch (error) {

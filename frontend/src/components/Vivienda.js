@@ -64,84 +64,98 @@ function Vivienda() {
   };
 
   const handleMaterialUpdate = async (vivienda_id, material_ids, entregado) => {
-    try {
-      await Promise.all(
-        material_ids.map((material_id) =>
-          axios.put(
-            `${process.env.REACT_APP_API_URL}/viviendas/material`,
-            { vivienda_id, material_id, entregado: !entregado },
-            { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-          )
-        )
-      );
+  try {
+    await Promise.all(
+      material_ids.map((material_id) => {
+        const payload = { material_id, entregado: !entregado };
+        console.log('Sending PUT request:', {
+          url: `${process.env.REACT_APP_API_URL}/viviendas/${vivienda_id}/material`,
+          payload,
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        });
+        return axios.put(
+          `${process.env.REACT_APP_API_URL}/viviendas/${vivienda_id}/material`,
+          payload,
+          { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+        );
+      })
+    );
 
-      setData((prev) => ({
-        ...prev,
-        partidas: {
-          ...prev.partidas,
-          materiales: prev.partidas.materiales.map((partida) => ({
-            ...partida,
-            materiales: partida.materiales.map((m) =>
-              material_ids.includes(m.material_id) ? { ...m, entregado: !entregado } : m
-            ),
-          })),
-        },
-      }));
-    } catch (err) {
-      setError(err.response?.data?.message || 'Error al actualizar material');
-    }
-  };
+    setData((prev) => ({
+      ...prev,
+      partidas: {
+        ...prev.partidas,
+        materiales: prev.partidas.materiales.map((partida) => ({
+          ...partida,
+          materiales: partida.materiales.map((m) =>
+            material_ids.includes(m.material_id) ? { ...m, entregado: !entregado } : m
+          ),
+        })),
+      },
+    }));
+  } catch (err) {
+    console.error('Error in handleMaterialUpdate:', {
+      message: err.message,
+      response: err.response?.data,
+      status: err.response?.status,
+    });
+    setError(err.response?.data?.message || 'Error al actualizar material');
+  }
+};
 
   const handleProgresoUpdate = async (e) => {
-    e.preventDefault();
-    if (!selectedTarea) return;
+  e.preventDefault();
+  if (!selectedTarea) return;
 
-    try {
-      const { progreso, trazada, notas } = progresoForm;
-      if (isNaN(progreso) || progreso < 0 || progreso > 100) {
-        setError('El progreso debe ser un número entre 0 y 100');
-        return;
-      }
-
-      await axios.put(
-        `${process.env.REACT_APP_API_URL}/viviendas/progreso`,
-        {
-          vivienda_id: id,
-          tarea_id: selectedTarea.tarea_id,
-          progreso: parseInt(progreso),
-          trazada: selectedTarea.requiere_trazo ? trazada : null,
-          notas: notas || '',
-        },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      );
-
-      setData((prev) => ({
-        ...prev,
-        partidas: {
-          ...prev.partidas,
-          progreso: prev.partidas.progreso.map((partida) => ({
-            ...partida,
-            tareas: partida.tareas.map((t) =>
-              t.tarea_id === selectedTarea.tarea_id
-                ? {
-                    ...t,
-                    progreso: parseInt(progreso),
-                    trazada: selectedTarea.requiere_trazo ? trazada : t.trazada,
-                    notas: notas || '',
-                  }
-                : t
-            ),
-          })),
-        },
-      }));
-
-      setIsProgresoModalOpen(false);
-      setSelectedTarea(null);
-      setProgresoForm({ progreso: '', trazada: false, notas: '' });
-    } catch (err) {
-      setError(err.response?.data?.message || 'Error al actualizar progreso');
+  try {
+    const { progreso, trazada, notas } = progresoForm;
+    if (isNaN(progreso) || progreso < 0 || progreso > 100) {
+      setError('El progreso debe ser un número entre 0 y 100');
+      return;
     }
-  };
+
+    const payload = {
+      tarea_id: selectedTarea.tarea_id,
+      progreso: parseInt(progreso),
+      trazada: selectedTarea.requiere_trazo ? trazada : null,
+      notas: notas || '',
+    };
+    console.log('Sending PUT request to:', `${process.env.REACT_APP_API_URL}/viviendas/${id}/progreso`, payload);
+
+    await axios.put(
+      `${process.env.REACT_APP_API_URL}/viviendas/${id}/progreso`, // Updated URL
+      payload,
+      { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+    );
+
+    setData((prev) => ({
+      ...prev,
+      partidas: {
+        ...prev.partidas,
+        progreso: prev.partidas.progreso.map((partida) => ({
+          ...partida,
+          tareas: partida.tareas.map((t) =>
+            t.tarea_id === selectedTarea.tarea_id
+              ? {
+                  ...t,
+                  progreso: parseInt(progreso),
+                  trazada: selectedTarea.requiere_trazo ? trazada : t.trazada,
+                  notas: notas || '',
+                }
+              : t
+          ),
+        })),
+      },
+    }));
+
+    setIsProgresoModalOpen(false);
+    setSelectedTarea(null);
+    setProgresoForm({ progreso: '', trazada: false, notas: '' });
+  } catch (err) {
+    console.error('Error in handleProgresoUpdate:', err.response?.data);
+    setError(err.response?.data?.message || 'Error al actualizar progreso');
+  }
+};
 
   const openProgresoModal = (tarea) => {
     setSelectedTarea(tarea);
