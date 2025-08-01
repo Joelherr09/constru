@@ -7,7 +7,6 @@ import BottomBar from './BottomBar';
 function Manzanas() {
   const { id } = useParams();
   const [manzana, setManzana] = useState(null);
-  
   const [viviendas, setViviendas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
